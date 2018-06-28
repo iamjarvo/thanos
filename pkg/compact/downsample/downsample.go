@@ -12,6 +12,7 @@ import (
 	"os"
 
 	"github.com/go-kit/kit/log"
+	"github.com/improbable-eng/thanos/pkg/runutil"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/tsdb"
@@ -42,13 +43,13 @@ func Downsample(
 	if err != nil {
 		return id, errors.Wrap(err, "open index reader")
 	}
-	defer indexr.Close()
+	defer runutil.BestEffortErr(nil, &err, indexr, "downsample index reader")
 
 	chunkr, err := b.Chunks()
 	if err != nil {
 		return id, errors.Wrap(err, "open chunk reader")
 	}
-	defer chunkr.Close()
+	defer runutil.BestEffortErr(nil, &err, chunkr, "downsample chunk reader")
 
 	rng := origMeta.MaxTime - origMeta.MinTime
 

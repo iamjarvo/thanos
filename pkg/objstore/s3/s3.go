@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/improbable-eng/thanos/pkg/objstore"
+	"github.com/improbable-eng/thanos/pkg/runutil"
 	"github.com/minio/minio-go"
 	"github.com/minio/minio-go/pkg/encrypt"
 	"github.com/pkg/errors"
@@ -200,7 +201,8 @@ func (b *Bucket) getRange(ctx context.Context, name string, off, length int64) (
 	// NotFoundObject error is revealed only after first Read. This does the initial GetRequest. Prefetch this here
 	// for convenience.
 	if _, err := r.Read(nil); err != nil {
-		r.Close()
+		runutil.LogOnErr(nil, r, "s3 get range obj close")
+
 		// First GET Object request error.
 		return nil, err
 	}

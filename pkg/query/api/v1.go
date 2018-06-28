@@ -30,6 +30,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/improbable-eng/thanos/pkg/query"
+	"github.com/improbable-eng/thanos/pkg/runutil"
 	"github.com/improbable-eng/thanos/pkg/tracing"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -380,7 +381,7 @@ func (api *API) labelValues(r *http.Request) (interface{}, []error, *apiError) {
 	if err != nil {
 		return nil, nil, &apiError{errorExec, err}
 	}
-	defer q.Close()
+	defer runutil.LogOnErr(nil, q, "queryable labelValues")
 
 	// TODO(fabxc): add back request context.
 
@@ -398,7 +399,10 @@ var (
 )
 
 func (api *API) series(r *http.Request) (interface{}, []error, *apiError) {
-	r.ParseForm()
+	if err := r.ParseForm(); err != nil {
+		return nil, nil, &apiError{errorInternal, errors.Wrap(err, "parse form")}
+	}
+
 	if len(r.Form["match[]"]) == 0 {
 		return nil, nil, &apiError{errorBadData, fmt.Errorf("no match[] parameter provided")}
 	}
@@ -458,7 +462,7 @@ func (api *API) series(r *http.Request) (interface{}, []error, *apiError) {
 	if err != nil {
 		return nil, nil, &apiError{errorExec, err}
 	}
-	defer q.Close()
+	defer runutil.LogOnErr(nil, q, "queryable series")
 
 	var sets []storage.SeriesSet
 	for _, mset := range matcherSets {
@@ -492,7 +496,7 @@ func respond(w http.ResponseWriter, data interface{}, warnings []error) {
 	for _, warn := range warnings {
 		resp.Warnings = append(resp.Warnings, warn.Error())
 	}
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 func respondError(w http.ResponseWriter, apiErr *apiError, data interface{}) {
@@ -513,7 +517,7 @@ func respondError(w http.ResponseWriter, apiErr *apiError, data interface{}) {
 	}
 	w.WriteHeader(code)
 
-	json.NewEncoder(w).Encode(&response{
+	_ = json.NewEncoder(w).Encode(&response{
 		Status:    statusError,
 		ErrorType: apiErr.typ,
 		Error:     apiErr.err.Error(),

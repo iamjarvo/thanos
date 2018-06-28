@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"fmt"
+
 	"github.com/improbable-eng/thanos/pkg/runutil"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -88,14 +90,13 @@ const DirDelim = "/"
 
 // DeleteDir removes all objects prefixed with dir from the bucket.
 func DeleteDir(ctx context.Context, bkt Bucket, dir string) error {
-	bkt.Iter(ctx, dir, func(name string) error {
+	return bkt.Iter(ctx, dir, func(name string) error {
 		// If we hit a directory, call DeleteDir recursively.
 		if strings.HasSuffix(name, DirDelim) {
 			return DeleteDir(ctx, bkt, name)
 		}
 		return bkt.Delete(ctx, name)
 	})
-	return nil
 }
 
 // DownloadFile downloads the src file from the bucket to dst. If dst is an existing
@@ -113,17 +114,19 @@ func DownloadFile(ctx context.Context, bkt BucketReader, src, dst string) error 
 	if err != nil {
 		return errors.Wrap(err, "get file")
 	}
-	defer rc.Close()
+	defer runutil.LogOnErr(nil, rc, "download block's file reader")
 
 	f, err := os.Create(dst)
 	if err != nil {
 		return errors.Wrap(err, "create file")
 	}
 	defer func() {
-		f.Close()
+		runutil.LogOnErr(nil, f, "download block's output file")
 		// Best-effort cleanup.
 		if err != nil {
-			os.Remove(dst)
+			if rerr := os.Remove(dst); rerr != nil {
+				fmt.Println("failed to best effortly remove ", dst, "err:", rerr)
+			}
 		}
 	}()
 	if _, err = io.Copy(f, rc); err != nil {
@@ -145,7 +148,9 @@ func DownloadDir(ctx context.Context, bkt BucketReader, src, dst string) error {
 	})
 	// Best-effort cleanup if the download failed.
 	if err != nil {
-		os.RemoveAll(dst)
+		if rerr := os.Remove(dst); rerr != nil {
+			fmt.Println("failed to best effortly remove ", dst, "err:", rerr)
+		}
 	}
 	return err
 }
